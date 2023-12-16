@@ -16,23 +16,27 @@ class Rewrite(NamedTuple):
     rule: str  # Name of the rule that was applied to get to this step
     graph: GraphT  # Diff from the last step to this step
 
-    def to_json(self) -> str:
+    def to_json(self, graph: GraphT) -> str:
         """Serializes the rewrite to JSON."""
+
+        print("graph", graph)
         return json.dumps({
             "display_name": self.display_name,
             "rule": self.rule,
-            "graph": self.graph.to_json()
+            "diff": GraphDiff(graph, self.graph).to_json()
         })
 
     @staticmethod
-    def from_json(json_str: str) -> "Rewrite":
+    def from_json(json_str: str, graph: GraphT) -> "Rewrite":
         """Deserializes the rewrite from JSON."""
         d = json.loads(json_str)
+        diff = GraphDiff.from_json(d["diff"])
+        graph = diff.apply_diff(graph)
 
         return Rewrite(
             display_name=d.get("display_name", d["rule"]), # Old proofs may not have display names
             rule=d["rule"],
-            graph=GraphT.from_json(d["graph"]),
+            graph=graph,
         )
 
 class ProofModel(QAbstractListModel):
@@ -138,11 +142,16 @@ class ProofModel(QAbstractListModel):
 
     def to_json(self) -> str:
         """Serializes the model to JSON."""
-        initial_graph = self.initial_graph.to_json()
-        proof_steps = [step.to_json() for step in self.steps]
+        proof_steps = []
+        prev_graph = self.initial_graph.copy()
+        for step in self.steps:
+            proof_steps.append(step.to_json(prev_graph))
+            print("prev", prev_graph.graph)
+            print("new", step.graph.graph)
+            prev_graph = step.graph.copy()
 
         return json.dumps({
-            "initial_graph": initial_graph,
+            "initial_graph": self.initial_graph.to_json(),
             "proof_steps": proof_steps
         })
 
@@ -153,8 +162,12 @@ class ProofModel(QAbstractListModel):
         initial_graph = GraphT.from_json(d["initial_graph"])
         # Mypy issue: https://github.com/python/mypy/issues/11673
         assert isinstance(initial_graph, GraphT)  # type: ignore
+
         model = ProofModel(initial_graph)
+        prev_graph = initial_graph.copy()
         for step in d["proof_steps"]:
-            rewrite = Rewrite.from_json(step)
+            rewrite = Rewrite.from_json(step, prev_graph)
             model.add_rewrite(rewrite)
+            prev_graph = rewrite.graph.copy()
+
         return model

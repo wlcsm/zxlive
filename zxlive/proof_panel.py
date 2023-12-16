@@ -156,6 +156,7 @@ class ProofPanel(BasePanel):
         return selection, list(edges)
 
     def _vert_moved(self, vs: list[tuple[VT, float, float]]) -> None:
+        print(self.graph.graph)
         cmd = MoveNodeInStep(self.graph_view, vs, self.step_view)
         self.undo_stack.push(cmd)
 
